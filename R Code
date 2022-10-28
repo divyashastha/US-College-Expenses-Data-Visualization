@@ -1,0 +1,120 @@
+options(repos = list(CRAN="http://cran.rstudio.com/"))
+knitr::opts_chunk$set(echo = TRUE)
+install.packages('plyr', repos = "http://cran.us.r-project.org")
+install.packages(c('tidyverse' , 'vtable'))
+install.packages('gghighlight')
+install.packages('causaldata')
+install.packages("ggplot2", repos = "http://cran.us.r-project.org")
+
+library(plyr)
+library(knitr)
+library(tidyr)
+library(tidyverse)
+library(dplyr, warn.conflicts = FALSE)
+library(vtable)
+library(ggplot2)
+library(gghighlight)
+library(scales)
+library(causaldata)
+library(kableExtra)
+
+#Read the File and generate a Variable Table
+df <- readRDS('college_expenses_and_enrollment.Rdata') 
+vtable::vtable(df)
+
+#Executing summary Statistics to understand the data in general
+summary(df)
+
+R Text: With the below comments, I am creating new variables (columns) to calculate the Total Income and Expenses per capita, Overall income and expenses 
+of individual colleges, overall income and expenses per capita.
+
+Then, I wanted to find the profit per capita for each college so that I will know how profitable universities are functioning and I thought to use 
+this information for doing some useful analysis thereafter.
+
+Lastly, I calculated Tuition per capita.
+
+data1 <- df %>%
+  mutate('Total_Income_Per_Capita' = Total.Income/Total.Enrollment) %>%
+  mutate('Total_Expenses_Per_Capita' = Total.Expenses/Total.Enrollment) %>%
+  mutate('Overall.Income' = Total.Income + Tuition + Federal + State + Local + Private + Sales) %>%
+  mutate('Overall.Expenses' = Total.Expenses + Research + Public.Service + Student.Services + Instruction + Academic.Support + Other) %>%
+  mutate('Overall_Income_Per_Capita' = Overall.Income/Total.Enrollment) %>%
+  mutate('Overall_Expenses_Per_Capita' = Overall.Expenses/Total.Enrollment) %>%
+  mutate('Profit_Per_Capita' = Overall_Income_Per_Capita - Overall_Expenses_Per_Capita) %>%
+  mutate('Tuition_Per_Capita' = Tuition/Total.Enrollment)
+
+head(data1)
+
+R text: I also tried to find the correlation between overall expenses and overall income - A correlation of 0.98 shows that both entities are 
+highly correlated, which means that an income for a college is almost always offset by its expenditure. Then, are colleges not running on profit?
+
+cor(data1$Overall.Income, data1$Overall.Expenses)
+lm(Overall.Income ~ Overall.Expenses, data = data1)
+
+R text: DATA ANALYSIS 1
+
+This leads to my first analysis: Institutional Profit per capita vs Type of Institutions
+
+From the bar chart below, we can observe that Private non-profit (4 year) type of college makes more profit compared to other institutions. 
+As expected, the public colleges make the least profit.
+
+data1 %>%
+  group_by(type) %>%
+  summarise(Institutional_Profit_Per_Capita = mean(Profit_Per_Capita, na.rm = TRUE)) %>%
+  arrange(-Institutional_Profit_Per_Capita) %>%
+  ggplot(aes(x = reorder(type, -Institutional_Profit_Per_Capita) , y = Institutional_Profit_Per_Capita)) + 
+  geom_col(position = 'dodge') + 
+  geom_bar(stat="identity",fill="purple") +
+  xlab("Type of Institution") +  
+  ylab("Institution Profit Per Capita") 
+  
+ R text: DATA ANALYSIS 2
+
+Here, I have done a scatter-plot to analyse the relationship between Overall Income and the amount of money spent on Research (R&D). 
+There is a positive correlation (corr=0.81), which shows that colleges allocate funds to research based on the amount of income they generate.
+
+I noticed an anomaly in the data - John Hopkins college (a point on the top left quandrant) spends a significant amount of approximately 
+USD 2.91Billion for research. I researched a little more on this topic, and I was surprised to find that Johns Hopkins has led all US universities 
+in R&D spending for 42 consecutive year.
+
+Reference: Hub - John Hopkins University. (2022, Jan 7). Retrieved from 
+https://hub.jhu.edu/2022/01/07/nsf-higher-education-research-spending 2020/#:~:text=The%20university%20spent%20a%20record,the%20next%20highest%2Dspending%20institution.
+
+{r}
+data1 %>%
+  ggplot(aes(x = Overall.Income, y = Research)) + 
+  geom_point() +
+  scale_y_continuous(labels = unit_format(unit = "M", scale = 1e-6)) +
+  scale_x_continuous(labels = unit_format(unit = "M", scale = 1e-6))
+
+cor(data1$Overall.Income, data1$Research)
+
+data1 %>%
+  arrange(-Research) %>%
+  slice(1:1)
+
+
+R text: DATA ANALYSIS 3
+
+As an international student, I wanted to find out how much students spend in each state on average for their tuition fees. 
+I have created a bar chart for top 10 American states with the highest tuition fee. I have ranked the data in the order of most expensive 
+tuitions per state to the least. I was surprised to find that Fermont (VT) state has some expensive universities, as I was under the 
+impression that Massachusetts (MA) or even New York (NY) would top the list, given the cost of living and some of the best universities 
+in the US situated in those states. 
+
+data1 %>%
+  group_by(STABBR) %>%
+  summarise(Avg_Tuition_Per_State_Per_Capita = mean(Tuition_Per_Capita, na.rm = TRUE)) %>%
+  arrange(-Avg_Tuition_Per_State_Per_Capita) %>%
+  slice(1:10) %>%
+  ggplot(aes(x = reorder(STABBR, -Avg_Tuition_Per_State_Per_Capita), y = Avg_Tuition_Per_State_Per_Capita)) + 
+  geom_col(position = 'dodge', fill='lightblue') + 
+  gghighlight(max(Avg_Tuition_Per_State_Per_Capita) > 25000) + 
+  geom_text(aes(label = sprintf("%0.2f", round(Avg_Tuition_Per_State_Per_Capita, digits = 2)), vjust = 1.5)) +
+  theme(legend.position="none") +
+  xlab("American States") +  
+  ylab("Average Tuition Per State Per Student") +
+  ggtitle("Top 10 States with Highest Average Tuition Fee") +
+  theme(plot.title = element_text(face='bold'),axis.title = element_text(face='bold'))
+
+
